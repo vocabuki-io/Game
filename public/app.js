@@ -1,8 +1,9 @@
-// クライアント：WebSocketで権威サーバ(DO)に繋ぎ、役割別ビューを描画・操作する。
+// クライアント：WebSocketで権威サーバ(DO)に繋ぎ、役割別ビューをSVGすごろく盤面で描画・操作する。
 const $ = (id) => document.getElementById(id);
-let ws = null, myRole = null, view = null, pendingCard = null;
+let ws = null, myRole = null, view = null, prevView = null, pendingCard = null;
 
 const ROLE_JP = { prisoner: "囚人", guard: "看守" };
+const ROLE_CH = { prisoner: "囚", guard: "看" };
 const EVENT_JP = { none: "特になし", labor: "刑務作業", inspection: "手荷物検査", construction: "工事", visit: "面会" };
 
 // ---- ロビー ----
@@ -39,11 +40,12 @@ function onMessage(ev) {
     return;
   }
   if (msg.t === "error") { toast(msg.msg); return; }
-  if (msg.t === "state") { view = msg.view; render(); }
+  if (msg.t === "state") { view = msg.view; render(); prevView = view; }
 }
 
 // ---- 描画 ----
 function render() {
+  detectBursts();
   $("day-badge").textContent = `Day ${view.day}/${view.maxDay}`;
   $("event-badge").textContent = "📅 " + (EVENT_JP[view.event] || view.event);
   renderStatus();
@@ -51,6 +53,9 @@ function render() {
   renderLog();
   renderControls();
 }
+
+function nodeById(id) { return view.map.nodes.find((n) => n.id === id); }
+function nodeLabel(id) { const n = nodeById(id); return n ? (n.label || "？マス") : id; }
 
 function renderStatus() {
   const el = $("status");
@@ -63,35 +68,71 @@ function renderStatus() {
       <div class="row"><span class="k">リソース</span><span>${s.resources}</span></div>
       <div class="row"><span class="k">禁制品</span><span>${s.contraband.length ? s.contraband.join(", ") + (s.concealed ? "（隠蔽中）" : "（無防備！）") : "なし"}</span></div>`;
   } else {
-    el.innerHTML = `<div class="row"><span class="k">任務</span><span>${view.maxDay}日目まで監督し、違反の現行犯を押さえろ</span></div>
+    el.innerHTML = `<div class="row"><span class="k">任務</span><span>${view.maxDay}日目まで監督し現行犯を押さえろ</span></div>
       <div class="row"><span class="k">囚人の位置</span><span>${view.prisonerPos ? nodeLabel(view.prisonerPos) : "見失っている…"}</span></div>`;
   }
 }
 
-function nodeLabel(id) {
-  const n = view.map.nodes.find((x) => x.id === id);
-  return n ? n.label : id;
-}
-
+// ---- SVGすごろく盤面 ----
 function renderMap() {
+  const nodes = view.map.nodes;
+  const pos = {}; nodes.forEach((n) => (pos[n.id] = n));
   const me = view.self.pos;
   const foe = myRole === "prisoner" ? view.guardPos : view.prisonerPos;
-  $("map").innerHTML = view.map.nodes.map((n) => {
-    const cls = ["node"];
-    if (!n.known) cls.push("unknown");
-    if (n.restricted) cls.push("restricted");
-    if (n.exit) cls.push("exit");
-    if (n.hidden) cls.push("hiddenNode");
-    const pins = [];
-    if (n.id === me) pins.push(`<span class="pin me ${myRole}">あなた</span>`);
-    if (foe && n.id === foe) pins.push(`<span class="pin foe">${ROLE_JP[myRole === "prisoner" ? "guard" : "prisoner"]}</span>`);
-    const tags = [n.restricted ? "立入禁止" : "", n.exit ? "出口" : "", n.hidden ? "隠しマス" : ""].filter(Boolean).join(" / ");
-    return `<div class="${cls.join(" ")}">
-      <div class="name">${n.label}</div>
-      ${tags ? `<div class="tags">${tags}</div>` : ""}
-      <div class="pins">${pins.join("")}</div>
-    </div>`;
-  }).join("");
+
+  const parts = [];
+  // 外壁
+  parts.push(`<rect class="wall" x="0" y="0" width="100" height="100" rx="3"/>`);
+  parts.push(`<line class="gate-gap" x1="83" y1="0" x2="97" y2="0"/>`);
+  parts.push(`<line class="gate-gap" x1="0" y1="83" x2="0" y2="97"/>`);
+
+  // 道（edges）
+  for (const [a, b] of view.map.edges) {
+    const pa = pos[a], pb = pos[b];
+    if (!pa || !pb) continue;
+    parts.push(`<line class="edge" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}"/>`);
+  }
+
+  // 部屋の囲み（room/gate）
+  for (const n of nodes) {
+    if (n.kind === "room" || n.kind === "gate") {
+      parts.push(`<rect class="room-box" x="${n.x - 10}" y="${n.y - 8}" width="20" height="17" rx="1.5"/>`);
+    }
+  }
+
+  // マス（ノード）
+  for (const n of nodes) {
+    const isRoomy = n.kind === "room" || n.kind === "gate";
+    const r = n.kind === "tunnel" ? 5 : isRoomy ? 5.4 : 3.8;
+    let cls = "n";
+    if (n.kind === "space") cls += " n-space";
+    if (!n.known) cls += " n-unknown";
+    else if (n.kind === "tunnel") cls += " n-tunnel";
+    else if (n.exit) cls += " n-exit";
+    else if (n.restricted) cls += " n-restricted";
+    parts.push(`<circle class="${cls}" cx="${n.x}" cy="${n.y}" r="${r}"/>`);
+    if (isRoomy && n.known) parts.push(`<circle class="n-ring" cx="${n.x}" cy="${n.y}" r="${r - 1.7}"/>`);
+    if (n.known) {
+      // 壁際（下寄り）のゲートはラベルを上に出して壁との被りを避ける
+      const ly = n.y >= 80 ? n.y - 8 : n.y + (isRoomy ? 11 : 8);
+      parts.push(`<text class="lbl" x="${n.x}" y="${ly}" font-size="3.6">${n.label}${n.muster ? " ⚑" : ""}</text>`);
+    } else {
+      parts.push(`<text class="q" x="${n.x}" y="${n.y + 1.6}" font-size="5.5">？</text>`);
+    }
+  }
+
+  // コマ（トークン）
+  if (pos[me]) parts.push(token(pos[me], -2.4, -2.6, `tok-me${myRole === "guard" ? " guard" : ""}`, ROLE_CH[myRole]));
+  if (foe && pos[foe]) parts.push(token(pos[foe], 2.4, 2.8, "tok-foe", ROLE_CH[myRole === "prisoner" ? "guard" : "prisoner"]));
+
+  $("map").innerHTML =
+    `<svg class="board" viewBox="-9 -9 118 122" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`;
+}
+
+function token(n, dx, dy, cls, ch) {
+  const x = n.x + dx, y = n.y + dy;
+  return `<circle class="tok ${cls}" cx="${x}" cy="${y}" r="3.2"/>` +
+         `<text class="tok-lbl" x="${x}" y="${y + 1.1}" font-size="3">${ch}</text>`;
 }
 
 function renderLog() {
@@ -114,9 +155,8 @@ function renderControls() {
 
   if (view.phase === "pursuit") return renderPursuit(el);
 
-  // 行動フェーズ
   if (view.waiting[myRole]) {
-    el.innerHTML = `<div class="waiting">提出済み。相手の行動を待っています…</div>`;
+    el.innerHTML = `<div class="waiting">提出済み！ 相手の行動を待っています…</div>`;
     return;
   }
   el.innerHTML = `<div class="title">手札から1つ選ぶ</div>
@@ -127,7 +167,7 @@ function renderControls() {
 }
 
 function renderPursuit(el) {
-  if (view.waiting[myRole]) { el.innerHTML = `<div class="waiting">追跡：相手を待っています…</div>`; return; }
+  if (view.waiting[myRole]) { el.innerHTML = `<div class="waiting">追跡中… 相手を待っています</div>`; return; }
   const turns = view.pursuit ? view.pursuit.turnsLeft : 0;
   if (myRole === "prisoner") {
     el.innerHTML = `<div class="title">🏃 追跡フェーズ（残り${turns}手）— 逃げるか刃向かうか</div>
@@ -142,6 +182,30 @@ function renderPursuit(el) {
       </div>`;
   }
 }
+
+// ---- バースト演出 ----
+function detectBursts() {
+  if (!prevView) return;
+  if (prevView.phase !== "pursuit" && view.phase === "pursuit") showBurst("アウト！", "red");
+  if (!prevView.winner && view.winner) {
+    const r = view.winReason || "";
+    if (/脱獄|逃げ切|脱出/.test(r)) showBurst("脱獄！", "orange");
+    else if (/撃破/.test(r)) showBurst("撃破！", "red");
+    else if (/捕縛|確保|制圧|逃げ道/.test(r)) showBurst("確保！", "blue");
+    else if (/期日/.test(r)) showBurst("タイムアップ", "blue");
+    else showBurst("決着！", "");
+  }
+}
+let burstTimer = null;
+function showBurst(text, color) {
+  const b = $("burst"), star = b.querySelector(".burst-star");
+  star.textContent = text;
+  star.className = "burst-star" + (color ? " " + color : "");
+  b.classList.remove("hidden");
+  clearTimeout(burstTimer);
+  burstTimer = setTimeout(() => b.classList.add("hidden"), 1500);
+}
+window.showBurst = showBurst;
 
 // ---- 操作 ----
 window.chooseCard = (i) => {

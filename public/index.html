@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#161a20" />
+  <meta name="theme-color" content="#efe6cf" />
   <title>脱獄 vs 看守</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="stylesheet" href="/styles.css" />
@@ -25,7 +25,7 @@
   <section id="game" class="screen hidden">
     <header id="hud">
       <span id="role-badge" class="badge">-</span>
-      <span id="day-badge">Day -/-</span>
+      <span id="day-badge" class="day">Day -/-</span>
       <span id="event-badge" class="badge muted">-</span>
     </header>
 
@@ -36,6 +36,8 @@
     <footer id="controls" class="controls"></footer>
   </section>
 
+  <!-- コミック演出 -->
+  <div id="burst" class="hidden"><div class="burst-star"></div></div>
   <div id="toast" class="toast hidden"></div>
 
   <script src="/app.js"></script>
