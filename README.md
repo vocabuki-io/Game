@@ -38,7 +38,9 @@ npm run dev     # ローカル起動（wrangler dev → http://127.0.0.1:8787）
 npx wrangler login
 npm run deploy  # wrangler deploy
 ```
-Durable Objects を使うため、本番運用は Workers 有料プラン（$5/月〜）を想定。
+**Workers 無料プランで動作します。** Durable Objects は SQLite ストレージ版（本リポジトリの
+`new_sqlite_classes` 設定）であれば無料プランで利用可能です。無料枠の範囲内なら追加費用なしで運用でき、
+個人・少人数の対戦には十分です（大規模化した場合のみ有料プランを検討）。
 
 ## ステータス
 MVP（v0.1）。数値・カード・脱獄ルートは暫定で、プレイテストで調整予定。

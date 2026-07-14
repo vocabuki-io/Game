@@ -77,7 +77,7 @@ button:disabled { opacity: .45; }
 .node .name { font-weight: 700; font-size: .95rem; }
 .node .tags { font-size: .7rem; color: var(--muted); margin-top: 2px; }
 .pins { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
-.pin { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: .72rem; font-weight: 800; }
+.pin { padding: 3px 8px; border-radius: 8px; display: grid; place-items: center; font-size: .68rem; font-weight: 800; white-space: nowrap; }
 .pin.me { background: var(--accent); color: #201008; }
 .pin.me.guard { background: var(--guard); color: #04223f; }
 .pin.foe { background: #3a4552; color: var(--text); }
@@ -89,7 +89,7 @@ button:disabled { opacity: .45; }
 /* 操作 */
 .controls {
   position: sticky; bottom: 0; margin-top: auto; padding: 12px 14px;
-  background: linear-gradient(180deg, transparent, var(--bg) 22%);
+  background: var(--bg); border-top: 1px solid var(--line);
   display: flex; flex-direction: column; gap: 8px;
 }
 .controls .title { font-size: .82rem; color: var(--muted); }
