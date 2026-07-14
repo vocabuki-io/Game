@@ -1,0 +1,92 @@
+/* マップメーカー — 新聞紙調アメコミUI（ゲーム本体と統一） */
+:root {
+  --paper: #efe6cf; --paper2: #e5d9ba; --panel: #f6efdd;
+  --ink: #17140f; --ink2: #4a4034;
+  --red: #d8352a; --blue: #2e6ea6; --orange: #ef6a2b; --yellow: #ffd23f; --green: #4f9d54;
+  --shadow-sm: 3px 3px 0 var(--ink);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  color: var(--ink); background: var(--paper);
+  font-family: "Arial Black", system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-weight: 700;
+  background-image: radial-gradient(rgba(23,20,15,.08) 21%, transparent 23%);
+  background-size: 7px 7px;
+}
+#topbar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-bottom: 4px solid var(--ink); background: var(--paper); position: sticky; top: 0; z-index: 10;
+}
+.brand { font-size: 1.1rem; font-weight: 900; }
+.back { margin-left: auto; color: var(--ink); text-decoration: none; font-weight: 900;
+  border: 3px solid var(--ink); border-radius: 4px; padding: 6px 10px; box-shadow: 2px 2px 0 var(--ink); background: var(--panel); }
+
+#app { display: flex; gap: 0; align-items: stretch; }
+#tools {
+  width: 236px; flex: 0 0 236px; padding: 12px; border-right: 4px solid var(--ink);
+  display: flex; flex-direction: column; gap: 14px; max-height: calc(100dvh - 52px); overflow: auto;
+}
+.tool-group { display: flex; flex-direction: column; gap: 7px; }
+.tg-title { font-size: .78rem; font-weight: 900; color: var(--ink2); text-transform: none; }
+.muted { color: var(--ink2); font-weight: 700; font-size: .82rem; }
+
+button, .chip, select, input[type=text] {
+  font: inherit; font-weight: 800; border: 3px solid var(--ink); border-radius: 4px;
+  background: var(--panel); color: var(--ink); padding: 9px 10px;
+}
+button { cursor: pointer; box-shadow: 2px 2px 0 var(--ink); }
+button:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--ink); }
+button.primary { background: var(--red); color: #fff; }
+.tool { text-align: left; }
+.tool.active { background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); }
+.btn-row { display: flex; gap: 7px; }
+.btn-row button { flex: 1; padding: 8px 6px; font-size: .82rem; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 6px 9px; font-size: .82rem; cursor: pointer; box-shadow: 2px 2px 0 var(--ink); }
+.chip.active { background: var(--orange); color: #fff; }
+.chip.sz.active { background: var(--blue); color: #fff; }
+
+#prop-body label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 5px 0; font-size: .82rem; }
+#prop-body select, #prop-body input { padding: 6px; }
+
+/* キャンバス */
+#canvas-wrap { flex: 1; padding: 12px; overflow: auto; }
+.hint { font-size: .82rem; font-weight: 800; color: var(--ink2); margin-bottom: 8px; min-height: 1.2em; }
+#board-holder { display: inline-block; }
+.editor-board {
+  background: var(--paper2); border: 4px solid var(--ink); box-shadow: var(--shadow-sm);
+  touch-action: none; max-width: 100%; height: auto;
+}
+.editor-board .grid { stroke: rgba(23,20,15,.16); stroke-width: .6; }
+.editor-board .field { fill: none; stroke: var(--ink); stroke-width: 3; }
+.editor-board .fac { stroke: var(--ink); stroke-width: 1.4; opacity: .96; }
+.editor-board .fac-label { fill: var(--ink); font-weight: 900; text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,.5); stroke-width: 2px; }
+.editor-board .edge { stroke: var(--blue); stroke-width: 2.4; stroke-linecap: round; }
+.editor-board .edge.hidden-edge { stroke: var(--ink); stroke-dasharray: 5 4; }
+.editor-board .n-room { fill: #fff; stroke: var(--ink); stroke-width: 2.2; }
+.editor-board .n-room-ring { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.editor-board .n-space { fill: #fff; stroke: var(--ink); stroke-width: 2; }
+.editor-board .n-gate { fill: var(--green); stroke: var(--ink); stroke-width: 2.2; }
+.editor-board .sel { stroke: var(--red); stroke-width: 3; fill: none; }
+.editor-board .ghost { opacity: .4; }
+.editor-board .pick { stroke: var(--red) !important; }
+
+/* モーダル */
+.modal { position: fixed; inset: 0; background: rgba(23,20,15,.55); display: grid; place-items: center; z-index: 30; padding: 16px; }
+.modal.hidden, .hidden { display: none !important; }
+.modal-box { background: var(--paper); border: 4px solid var(--ink); box-shadow: var(--shadow-sm); border-radius: 6px; padding: 14px; width: min(560px, 96vw); }
+.modal-title { font-weight: 900; margin-bottom: 8px; }
+#modal-text { width: 100%; height: 46vh; border: 3px solid var(--ink); border-radius: 4px; padding: 10px; font-family: ui-monospace, monospace; font-size: .8rem; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) rotate(-1deg);
+  background: var(--ink); color: var(--yellow); padding: 10px 16px; border-radius: 4px;
+  border: 3px solid var(--ink); font-weight: 900; font-size: .85rem; z-index: 50;
+}
+
+@media (max-width: 720px) {
+  #app { flex-direction: column; }
+  #tools { width: 100%; flex: none; border-right: none; border-bottom: 4px solid var(--ink); max-height: none; }
+}

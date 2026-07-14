@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#efe6cf" />
+  <title>脱獄 vs 看守</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ロビー -->
+  <section id="lobby" class="screen">
+    <h1>脱獄 <span class="vs">vs</span> 看守</h1>
+    <p class="tag">1対1・約10分の心理戦。合言葉を共有して2人で対戦。</p>
+    <label class="field">
+      <span>あいことば（部屋コード）</span>
+      <input id="room-input" type="text" inputmode="latin" placeholder="例: yabai123" autocomplete="off" />
+    </label>
+    <button id="join-btn" class="primary">入室する</button>
+    <p class="hint">同じあいことばを相手に伝えて、両方から入室してください。<br>先に入った人が囚人、次が看守になります。</p>
+    <a class="editor-link" href="/editor.html">🛠 マップメーカーを開く</a>
+  </section>
+
+  <!-- ゲーム -->
+  <section id="game" class="screen hidden">
+    <header id="hud">
+      <span id="role-badge" class="badge">-</span>
+      <span id="day-badge" class="day">Day -/-</span>
+      <span id="event-badge" class="badge muted">-</span>
+    </header>
+
+    <div id="status" class="panel"></div>
+    <div id="map" class="map"></div>
+    <div id="log" class="log"></div>
+
+    <footer id="controls" class="controls"></footer>
+  </section>
+
+  <!-- コミック演出 -->
+  <div id="burst" class="hidden"><div class="burst-star"></div></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

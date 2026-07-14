@@ -1,0 +1,23 @@
+{
+  // Cloudflare Workers 設定。デプロイ: npx wrangler deploy / ローカル: npx wrangler dev
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "prison-break",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-01-01",
+
+  // PWA 静的アセット（public/ を配信）
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // 1部屋=1インスタンスの対戦ルーム（SQLbacked = 無料プラン対応）
+  "durable_objects": {
+    "bindings": [
+      { "name": "GAME_ROOM", "class_name": "GameRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] }
+  ]
+}

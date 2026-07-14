@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#efe6cf" />
+  <title>マップメーカー — 脱獄 vs 看守</title>
+  <link rel="stylesheet" href="/editor.css" />
+</head>
+<body>
+  <header id="topbar">
+    <span class="brand">🛠 マップメーカー</span>
+    <a class="back" href="/">← ゲームへ</a>
+  </header>
+
+  <div id="app">
+    <!-- ツール -->
+    <aside id="tools">
+      <div class="tool-group">
+        <div class="tg-title">ツール</div>
+        <button class="tool" data-tool="select">▣ 選択/移動</button>
+        <button class="tool" data-tool="facility">▦ 施設</button>
+        <button class="tool" data-tool="room">◎ 施設マス</button>
+        <button class="tool" data-tool="space">・ 中継マス</button>
+        <button class="tool" data-tool="gate">╫ 門</button>
+        <button class="tool" data-tool="edge">— 道でつなぐ</button>
+        <button class="tool" data-tool="hidden">┈ 隠し通路</button>
+        <button class="tool" data-tool="erase">✕ 消す</button>
+      </div>
+
+      <div class="tool-group" id="facility-opts">
+        <div class="tg-title">施設の種類</div>
+        <div id="fac-types" class="chips"></div>
+        <div class="tg-title">大きさ（マス）</div>
+        <div id="fac-sizes" class="chips"></div>
+      </div>
+
+      <div class="tool-group" id="prop-panel">
+        <div class="tg-title">プロパティ</div>
+        <div id="prop-body" class="muted">要素を選択すると編集できます</div>
+      </div>
+
+      <div class="tool-group">
+        <div class="tg-title">保存 / 読込</div>
+        <input id="map-name" type="text" placeholder="マップ名" />
+        <div class="btn-row">
+          <button id="btn-save">保存</button>
+          <button id="btn-new">新規</button>
+        </div>
+        <select id="saved-list"></select>
+        <div class="btn-row">
+          <button id="btn-load">読込</button>
+          <button id="btn-del">削除</button>
+        </div>
+        <div class="btn-row">
+          <button id="btn-export">JSON出力</button>
+          <button id="btn-import">JSON読込</button>
+        </div>
+        <input id="file-input" type="file" accept="application/json,.json" hidden />
+        <div class="btn-row">
+          <button id="btn-grid">フィールド寸法</button>
+          <button id="btn-clear">全消去</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- キャンバス -->
+    <main id="canvas-wrap">
+      <div id="hint" class="hint"></div>
+      <div id="board-holder"></div>
+    </main>
+  </div>
+
+  <!-- JSONモーダル -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-title" id="modal-title">JSON</div>
+      <textarea id="modal-text" spellcheck="false"></textarea>
+      <div class="btn-row">
+        <button id="modal-ok" class="primary">OK</button>
+        <button id="modal-cancel">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/editor.js"></script>
+</body>
+</html>
