@@ -7,21 +7,39 @@ const ROLE_CH = { prisoner: "囚", guard: "看" };
 const EVENT_JP = { none: "特になし", labor: "刑務作業", inspection: "手荷物検査", construction: "工事", visit: "面会" };
 
 // ---- ロビー ----
+function loadSavedMaps() {
+  try { return JSON.parse(localStorage.getItem("mapmaker.v1")) || {}; } catch { return {}; }
+}
+function populateMaps() {
+  const maps = loadSavedMaps();
+  const sel = $("map-select");
+  if (!sel) return;
+  sel.innerHTML = `<option value="">標準マップ</option>` +
+    Object.keys(maps).map((k) => `<option value="${k}">🗺️ ${k}</option>`).join("");
+}
+function selectedMap() {
+  const sel = $("map-select");
+  const name = sel ? sel.value : "";
+  if (!name) return null;
+  return loadSavedMaps()[name] || null;
+}
+
 function initLobby() {
   const saved = location.hash.slice(1);
   if (saved) $("room-input").value = decodeURIComponent(saved);
+  populateMaps();
   $("join-btn").addEventListener("click", () => {
     const room = $("room-input").value.trim();
     if (!room) return toast("あいことばを入れてください");
     location.hash = encodeURIComponent(room);
-    connect(room);
+    connect(room, selectedMap());
   });
 }
 
-function connect(room) {
+function connect(room, map) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/api/room/${encodeURIComponent(room)}`);
-  ws.addEventListener("open", () => ws.send(JSON.stringify({ t: "join" })));
+  ws.addEventListener("open", () => ws.send(JSON.stringify({ t: "join", map })));
   ws.addEventListener("message", onMessage);
   ws.addEventListener("close", () => toast("接続が切れました"));
   ws.addEventListener("error", () => toast("接続エラー"));
@@ -62,9 +80,10 @@ function renderStatus() {
   if (myRole === "prisoner") {
     const s = view.self;
     const pct = Math.round((s.tunnelProgress / s.tunnelGoal) * 100);
-    el.innerHTML = `
+    const tunnel = s.canDig ? `
       <div class="row"><span class="k">トンネル</span><span>${s.tunnelProgress}/${s.tunnelGoal}${s.tunnelOpen ? " ✅開通" : ""}</span></div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>` : "";
+    el.innerHTML = `${tunnel}
       <div class="row"><span class="k">リソース</span><span>${s.resources}</span></div>
       <div class="row"><span class="k">禁制品</span><span>${s.contraband.length ? s.contraband.join(", ") + (s.concealed ? "（隠蔽中）" : "（無防備！）") : "なし"}</span></div>`;
   } else {
@@ -83,20 +102,25 @@ function renderMap() {
   const parts = [];
   // 外壁
   parts.push(`<rect class="wall" x="0" y="0" width="100" height="100" rx="3"/>`);
-  parts.push(`<line class="gate-gap" x1="83" y1="0" x2="97" y2="0"/>`);
-  parts.push(`<line class="gate-gap" x1="0" y1="83" x2="0" y2="97"/>`);
 
-  // 道（edges）
-  for (const [a, b] of view.map.edges) {
-    const pa = pos[a], pb = pos[b];
-    if (!pa || !pb) continue;
-    parts.push(`<line class="edge" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}"/>`);
+  // 施設ボックス（マップメーカー由来。あれば描画）
+  for (const f of (view.facilities || [])) {
+    parts.push(`<rect class="fac-box" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="1.5"/>`);
   }
 
-  // 部屋の囲み（room/gate）
-  for (const n of nodes) {
-    if (n.kind === "room" || n.kind === "gate") {
-      parts.push(`<rect class="room-box" x="${n.x - 10}" y="${n.y - 8}" width="20" height="17" rx="1.5"/>`);
+  // 道（edges）。hidden=囚人の隠し通路は破線
+  for (const e of view.map.edges) {
+    const pa = pos[e.a], pb = pos[e.b];
+    if (!pa || !pb) continue;
+    parts.push(`<line class="edge ${e.hidden ? "hidden-edge" : ""}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}"/>`);
+  }
+
+  // 部屋の囲み（施設ボックスが無い場合のみ＝標準マップ向け）
+  if (!(view.facilities || []).length) {
+    for (const n of nodes) {
+      if (n.kind === "room" || n.kind === "gate") {
+        parts.push(`<rect class="room-box" x="${n.x - 10}" y="${n.y - 8}" width="20" height="17" rx="1.5"/>`);
+      }
     }
   }
 

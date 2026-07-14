@@ -1,8 +1,7 @@
-// 役割別ビュー：本体stateから「その役割が見てよい情報だけ」を抽出する。
-// 盤面（壁・部屋・道・座標）は両者に見せるが、"中身"は非対称にマスクする：
-//  - 囚人：未探索マスは伏せマス（位置は見えるが中身=ラベル不明）。自作トンネルは自分だけ見える。
-//  - 看守：全マス・囚人位置は見えるが、手札/禁制品/脱獄進捗は不明。囚人の作ったトンネルは不可視。
-import { MAP, TUNNEL_EXIT, TUNNEL_EXIT_POS, neighbors } from "./map.js";
+// 役割別ビュー：本体stateから「その役割が見てよい情報だけ」を抽出する（state.map駆動）。
+//  - 囚人：未探索マスは伏せマス（位置は見えるが中身=ラベル不明）。隠しマス/隠し通路は囚人だけ見える。
+//  - 看守：全マス・囚人位置は見えるが、手札/禁制品/脱獄進捗は不明。隠しマス・隠し通路は不可視。
+import { neighborsFor, edgesOf } from "./mapdef.js";
 import { CARD_DEFS } from "./cards.js";
 
 function cardView(id) {
@@ -10,21 +9,8 @@ function cardView(id) {
   return { id, label: c.label, needsTarget: c.needsTarget, desc: c.desc };
 }
 
-function baseEdges() {
-  const seen = new Set();
-  const out = [];
-  for (const a of Object.keys(MAP.edges)) {
-    for (const b of MAP.edges[a]) {
-      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
-      if (!seen.has(key)) { seen.add(key); out.push([a, b]); }
-    }
-  }
-  return out;
-}
-
-function nodeMeta(id) {
-  const n = MAP.nodes[id];
-  return { id, x: n.x, y: n.y, kind: n.kind, restricted: !!n.restricted, exit: !!n.exit, muster: !!n.muster };
+function meta(n, extra) {
+  return { id: n.id, x: n.x, y: n.y, kind: n.kind, restricted: !!n.restricted, exit: !!n.exit, muster: !!n.muster, ...extra };
 }
 
 export function buildView(state, role) {
@@ -36,25 +22,36 @@ export function buildView(state, role) {
     waiting: { prisoner: !!state.pending.prisoner, guard: !!state.pending.guard },
     pursuit: state.pursuit ? { turnsLeft: state.pursuit.turnsLeft } : null,
     log: state.log.slice(-8),
+    facilities: state.map.facilities || [],
   };
   return role === "prisoner" ? prisonerView(state, base) : guardView(state, base);
 }
 
 function prisonerView(state, base) {
-  const P = state.prisoner, G = state.guard;
+  const P = state.prisoner, G = state.guard, M = state.map;
   const known = new Set(P.discovered);
 
-  const nodes = Object.keys(MAP.nodes).map((id) => {
-    const m = nodeMeta(id);
-    const isKnown = known.has(id);
-    return { ...m, known: isKnown, label: isKnown ? MAP.nodes[id].label : null };
-  });
-  const edges = baseEdges();
+  const visible = (id) => !(M.nodes[id].secret && !P.tunnelOpen); // 隠しマスは開通後のみ
 
-  if (P.tunnelOpen) {
-    nodes.push({ id: TUNNEL_EXIT, x: TUNNEL_EXIT_POS.x, y: TUNNEL_EXIT_POS.y, kind: "tunnel",
-                 exit: true, restricted: false, muster: false, hidden: true, known: true, label: "トンネル出口" });
-    edges.push([MAP.tunnelExitFrom, TUNNEL_EXIT]);
+  const nodes = [];
+  for (const id of Object.keys(M.nodes)) {
+    const n = M.nodes[id];
+    if (!visible(id)) continue;
+    const isKnown = known.has(id) || n.secret;
+    nodes.push(meta(n, { hidden: !!n.secret, known: isKnown, label: isKnown ? n.label : null }));
+  }
+
+  const edges = [];
+  const seen = new Set();
+  for (const id of Object.keys(M.nodes)) {
+    if (!visible(id)) continue;
+    for (const e of edgesOf(state, id)) {
+      if (!visible(e.to)) continue;
+      const key = id < e.to ? `${id}|${e.to}` : `${e.to}|${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ a: id, b: e.to, hidden: !!e.hidden });
+    }
   }
 
   return {
@@ -63,32 +60,44 @@ function prisonerView(state, base) {
     self: {
       pos: P.pos, resources: P.resources, contraband: [...P.contraband],
       concealed: P.concealed, tunnelProgress: P.tunnelProgress,
-      tunnelGoal: MAP.tunnelGoal, tunnelOpen: P.tunnelOpen,
+      tunnelGoal: M.roles.tunnelGoal, tunnelOpen: P.tunnelOpen, canDig: !!M.roles.digSpot,
     },
     hand: P.hand.map(cardView),
-    // 看守は自分が発見済みのマスにいる時だけ位置が分かる（それ以外は見失う）
-    guardPos: known.has(G.pos) ? G.pos : null,
-    legalMoves: neighbors(state, P.pos),
+    guardPos: known.has(G.pos) ? G.pos : null, // 発見済みマスにいる看守だけ見える
+    legalMoves: neighborsFor(state, P.pos, "prisoner"),
   };
 }
 
 function guardView(state, base) {
-  const P = state.prisoner, G = state.guard;
+  const P = state.prisoner, G = state.guard, M = state.map;
 
-  // 看守には囚人が作った隠しマス（トンネル）は見えない → 通常マスのみ
-  const nodes = Object.keys(MAP.nodes).map((id) => ({ ...nodeMeta(id), known: true, label: MAP.nodes[id].label }));
-  const edges = baseEdges();
+  const nodes = [];
+  for (const id of Object.keys(M.nodes)) {
+    if (M.nodes[id].secret) continue; // 隠しマスは看守に見えない
+    nodes.push(meta(M.nodes[id], { known: true, label: M.nodes[id].label }));
+  }
 
-  // 囚人がトンネル出口(隠しマス)にいると看守は見失う
-  const prisonerVisible = P.pos !== TUNNEL_EXIT;
+  const edges = [];
+  const seen = new Set();
+  for (const id of Object.keys(M.nodes)) {
+    if (M.nodes[id].secret) continue;
+    for (const e of (M.adj[id] || [])) {
+      if (e.hidden || M.nodes[e.to]?.secret) continue; // 隠し通路は看守に見えない
+      const key = id < e.to ? `${id}|${e.to}` : `${e.to}|${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ a: id, b: e.to, hidden: false });
+    }
+  }
+
+  const prisonerVisible = !M.nodes[P.pos]?.secret; // 隠しマスの囚人は見失う
 
   return {
     ...base,
     map: { nodes, edges },
     self: { pos: G.pos },
     hand: G.hand.map(cardView),
-    // 位置は見えるが、手札・禁制品・脱獄進捗は非公開（現行犯でしか確定できない）
     prisonerPos: prisonerVisible ? P.pos : null,
-    legalMoves: (MAP.edges[G.pos] || []).slice(),
+    legalMoves: neighborsFor(state, G.pos, "guard"),
   };
 }

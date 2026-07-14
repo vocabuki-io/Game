@@ -1,8 +1,8 @@
 // ゲーム状態遷移エンジン（純ロジック / Cloudflare非依存＝Nodeでテスト可能）
 // 権威サーバ（Durable Object）側でのみ本体stateを持ち、クライアントには霧フィルタ後を配る。
 import { makeRng } from "./rng.js";
-import { MAP, TUNNEL_EXIT, neighbors } from "./map.js";
 import { CARD_DEFS, DECKS, HAND_SIZE } from "./cards.js";
+import { BUILTIN, neighborsFor, canMove } from "./mapdef.js";
 
 const EVENTS = ["none", "labor", "inspection", "construction", "visit"];
 const EVENT_LABEL = {
@@ -31,22 +31,24 @@ function log(state, text) {
 }
 
 // --- 新規ゲーム ---
-export function newGame(seed = Date.now()) {
+export function newGame(seed = Date.now(), mapDef = BUILTIN) {
+  const roles = mapDef.roles;
   const state = {
     seed: seed >>> 0,
     tick: 0,
     day: 1,
-    maxDay: MAP ? 14 : 14, // 暫定14日
+    maxDay: 14, // 暫定14日
     phase: "action",
     event: "none",
     musterCalledTonight: false,
+    map: mapDef,
     prisoner: {
-      pos: "cell", hand: [], resources: 0, contraband: [],
+      pos: roles.prisonerStart, hand: [], resources: 0, contraband: [],
       concealed: false, tunnelProgress: 0, tunnelOpen: false,
-      discovered: ["cell", "corridor"], out: false, escaped: false,
+      discovered: [...roles.prisonerDiscovered], out: false, escaped: false,
     },
     guard: {
-      pos: "yard", hand: [],
+      pos: roles.guardStart, hand: [],
     },
     pending: { prisoner: null, guard: null },
     pursuit: null,
@@ -93,42 +95,39 @@ export function submitAction(state, role, action) {
   return { ok: true };
 }
 
-function canMove(state, from, to) {
-  return neighbors(state, from).includes(to);
-}
-
 function resolveRound(state) {
   const P = state.prisoner, G = state.guard;
   const pa = state.pending.prisoner, ga = state.pending.guard;
+  const roles = state.map.roles;
 
   // 1) 移動を同時解決
-  if (pa.card === "move" && pa.target && canMove(state, P.pos, pa.target)) {
+  if (pa.card === "move" && pa.target && canMove(state, P.pos, pa.target, "prisoner")) {
     P.pos = pa.target;
     if (!P.discovered.includes(P.pos)) P.discovered.push(P.pos);
   }
-  if (ga.card === "patrol" && ga.target && canMove(state, G.pos, ga.target)) {
+  if (ga.card === "patrol" && ga.target && canMove(state, G.pos, ga.target, "guard")) {
     G.pos = ga.target;
   }
 
   // 2) 囚人の非移動アクション
-  if (pa.card === "dig" && P.pos === MAP.tunnelExitFrom) {
+  if (pa.card === "dig" && roles.digSpot && P.pos === roles.digSpot) {
     P.tunnelProgress += 1;
-    if (P.tunnelProgress >= MAP.tunnelGoal && !P.tunnelOpen) {
+    if (P.tunnelProgress >= roles.tunnelGoal && !P.tunnelOpen) {
       P.tunnelOpen = true;
       log(state, "トンネルが開通した（囚人にのみ見える隠しマス）");
     }
   }
   if (pa.card === "hide") P.concealed = true;
   if (pa.card === "scout") {
-    for (const n of neighbors(state, P.pos)) {
+    for (const n of neighborsFor(state, P.pos, "prisoner")) {
       if (!P.discovered.includes(n)) P.discovered.push(n);
     }
   }
   if (pa.card === "work") {
     const gain = state.event === "labor" ? 2 : 1;
     P.resources += gain;
-    // 工房での作業は工具(禁制品)を得ることがある
-    if (P.pos === "workshop") {
+    // 工房/工場での作業は工具(禁制品)を得ることがある
+    if (state.map.nodes[P.pos]?.work) {
       const r = rngFor(state);
       if (r() < 0.5 && !P.contraband.includes("tool")) P.contraband.push("tool");
     }
@@ -141,14 +140,15 @@ function resolveRound(state) {
   if (inspectHappens && coLocated && P.contraband.length > 0 && !P.concealed) {
     caught = "禁制品の現行犯";
   }
-  if (!caught && ga.card === "watch" && coLocated && MAP.nodes[P.pos]?.restricted) {
+  if (!caught && ga.card === "watch" && coLocated && state.map.nodes[P.pos]?.restricted) {
     caught = "立入禁止区での現行犯";
   }
   if (ga.card === "muster") state.musterCalledTonight = true;
 
-  // 4) 脱獄チェック（トンネル出口に到達で脱獄成功）
-  if (!caught && P.pos === TUNNEL_EXIT) {
-    endGame(state, "prisoner", "トンネルから脱獄成功（囚人勝ち）");
+  // 4) 脱獄チェック（出口マスに到達で脱獄成功）
+  if (!caught && state.map.nodes[P.pos]?.exit) {
+    const via = state.map.nodes[P.pos]?.kind === "tunnel" ? "トンネルから脱獄成功（囚人勝ち）" : "門から脱獄成功（囚人勝ち）";
+    endGame(state, "prisoner", via);
     return;
   }
 
@@ -161,7 +161,7 @@ function resolveRound(state) {
   }
 
   // 6) 夜：点呼チェック
-  if (state.musterCalledTonight && P.pos !== MAP.musterNode) {
+  if (state.musterCalledTonight && roles.musterNode && P.pos !== roles.musterNode) {
     P.out = true;
     log(state, "アウト：点呼不在の現行犯");
     startPursuit(state);
@@ -205,17 +205,17 @@ function resolvePursuit(state) {
   }
 
   // 逃走
-  if (pa.type === "flee" && pa.to && canMove(state, P.pos, pa.to)) {
+  if (pa.type === "flee" && pa.to && canMove(state, P.pos, pa.to, "prisoner")) {
     P.pos = pa.to;
     if (!P.discovered.includes(P.pos)) P.discovered.push(P.pos);
   }
   // 出口に到達すれば逃げ切り
-  if (P.pos === TUNNEL_EXIT || MAP.nodes[P.pos]?.exit) {
+  if (state.map.nodes[P.pos]?.exit) {
     endGame(state, "prisoner", "追跡を振り切って脱出（囚人勝ち）");
     return;
   }
   // 看守：追う or マスを被せる（同一マスに到達で捕縛）
-  if ((ga.type === "chase" || ga.type === "block") && ga.to && canMove(state, G.pos, ga.to)) {
+  if ((ga.type === "chase" || ga.type === "block") && ga.to && canMove(state, G.pos, ga.to, "guard")) {
     G.pos = ga.to;
   }
   if (G.pos === P.pos) {
@@ -230,4 +230,4 @@ function resolvePursuit(state) {
   log(state, `追跡継続（残り${state.pursuit.turnsLeft}手）`);
 }
 
-export { EVENT_LABEL, neighbors };
+export { EVENT_LABEL };
