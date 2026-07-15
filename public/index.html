@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#efe6cf" />
   <title>脱獄 vs 看守</title>
   <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="/board.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -16,6 +17,10 @@
     <label class="field">
       <span>あいことば（部屋コード）</span>
       <input id="room-input" type="text" inputmode="latin" placeholder="例: yabai123" autocomplete="off" />
+    </label>
+    <label class="field">
+      <span>マップ（マップメーカーで作ると増えます）</span>
+      <select id="map-select"></select>
     </label>
     <button id="join-btn" class="primary">入室する</button>
     <p class="hint">同じあいことばを相手に伝えて、両方から入室してください。<br>先に入った人が囚人、次が看守になります。</p>
@@ -41,6 +46,7 @@
   <div id="burst" class="hidden"><div class="burst-star"></div></div>
   <div id="toast" class="toast hidden"></div>
 
+  <script src="/board.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

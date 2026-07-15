@@ -1,11 +1,11 @@
-// マップメーカー：グリッド式レベルエディタ。SVGで盤面を描画し、施設/マス/門/道/隠し通路を配置。
-// 保存/読込(localStorage)、JSON入出力対応。出力JSONは将来ゲーム本体のマップ定義に変換して利用する。
+// マップメーカー：グリッド式レベルエディタ。SVGで盤面を描画し、施設(サイズのみの箱)/施設マス(種類付き◎)/
+// 中継マス(・)/門/道/隠し通路を配置。保存/読込(localStorage)、JSON入出力対応。
 (() => {
   const CELL = 40;
   const STORE = "mapmaker.v1";
   const $ = (id) => document.getElementById(id);
 
-  // 施設タイプ（色・既定サイズ）。アイデアは自由に追加可。
+  // 施設マス(◎)に付ける種類（色・名称）。アイデアは自由に追加可。
   const FAC_TYPES = {
     jail:      { label: "牢屋",   color: "#e7d3a1" },
     solitary:  { label: "独房",   color: "#e6c3b0" },
@@ -21,8 +21,8 @@
   const SIZES = [[1,1],[2,1],[2,2],[3,2],[4,2],[2,3],[3,3],[4,3]];
   const HINTS = {
     select: "要素をタップで選択、ドラッグで移動。選択中は右で編集・Deleteで削除。",
-    facility: "タップで施設を配置（種類・大きさは左で選択）。",
-    room: "施設マス◎をグリッド交点に配置。",
+    facility: "タップで施設（サイズだけの部屋）を配置。大きさは左で選択。",
+    room: "施設マス◎を配置。種類は左で選択（マス側に種類が付く）。",
     space: "中継マス・をグリッド交点に配置。",
     gate: "門を外周線上に配置（最寄りの辺にスナップ）。",
     edge: "2つのマス/門を順にタップして道—でつなぐ。",
@@ -32,11 +32,11 @@
 
   let map = newMap(10, 15);
   let tool = "select";
-  let facType = "jail";
-  let facSize = [2, 2];
-  let sel = null;        // {kind:'node'|'fac', id}
-  let edgeFrom = null;   // node id (edge/hidden作成中)
-  let drag = null;       // {kind,id,started}
+  let roomType = "jail";   // 施設マス◎に付ける種類
+  let facSize = [2, 2];    // 施設(箱)の大きさ
+  let sel = null;          // {kind:'node'|'fac', id}
+  let edgeFrom = null;
+  let drag = null;
   let idc = 1;
   const uid = (p) => `${p}${idc++}`;
 
@@ -44,46 +44,18 @@
     return { name: "新規マップ", grid: { cols, rows }, facilities: [], nodes: [], edges: [] };
   }
 
-  // ---------- 描画 ----------
+  // ---------- 描画（共有レンダラ BOARD を使用＝ゲームと同一の見た目） ----------
   function render() {
-    const W = map.grid.cols * CELL, H = map.grid.rows * CELL;
-    const p = [];
-    // グリッド
-    for (let x = 0; x <= map.grid.cols; x++) p.push(`<line class="grid" x1="${x*CELL}" y1="0" x2="${x*CELL}" y2="${H}"/>`);
-    for (let y = 0; y <= map.grid.rows; y++) p.push(`<line class="grid" x1="0" y1="${y*CELL}" x2="${W}" y2="${y*CELL}"/>`);
-    // 施設
-    for (const f of map.facilities) {
-      const t = FAC_TYPES[f.type] || { label: f.type, color: "#ddd" };
-      p.push(`<rect class="fac" x="${f.x*CELL}" y="${f.y*CELL}" width="${f.w*CELL}" height="${f.h*CELL}" rx="3" fill="${t.color}"/>`);
-      p.push(`<text class="fac-label" x="${(f.x + f.w/2)*CELL}" y="${(f.y + f.h/2)*CELL + 4}" font-size="${Math.min(f.w,f.h)*10+6}">${f.label || t.label}</text>`);
-      if (sel && sel.kind === "fac" && sel.id === f.id)
-        p.push(`<rect class="sel" x="${f.x*CELL-2}" y="${f.y*CELL-2}" width="${f.w*CELL+4}" height="${f.h*CELL+4}" rx="3"/>`);
+    let ov = "";
+    if (sel && sel.kind === "fac") {
+      const f = map.facilities.find((x) => x.id === sel.id);
+      if (f) ov += `<rect class="gb-sel" x="${f.x*CELL-2}" y="${f.y*CELL-2}" width="${f.w*CELL+4}" height="${f.h*CELL+4}" rx="3"/>`;
+    } else if (sel && sel.kind === "node") {
+      const n = node(sel.id);
+      if (n) ov += `<circle class="gb-sel" cx="${n.x*CELL}" cy="${n.y*CELL}" r="${CELL*0.42}"/>`;
     }
-    // 外周
-    p.push(`<rect class="field" x="1.5" y="1.5" width="${W-3}" height="${H-3}"/>`);
-    // 道
-    for (const e of map.edges) {
-      const a = node(e.a), b = node(e.b);
-      if (!a || !b) continue;
-      p.push(`<line class="edge ${e.hidden ? "hidden-edge" : ""}" x1="${a.x*CELL}" y1="${a.y*CELL}" x2="${b.x*CELL}" y2="${b.y*CELL}"/>`);
-    }
-    // マス
-    for (const n of map.nodes) {
-      const cx = n.x*CELL, cy = n.y*CELL;
-      if (n.kind === "room") {
-        p.push(`<circle class="n-room" cx="${cx}" cy="${cy}" r="${CELL*0.34}"/>`);
-        p.push(`<circle class="n-room-ring" cx="${cx}" cy="${cy}" r="${CELL*0.21}"/>`);
-      } else if (n.kind === "gate") {
-        const s = CELL*0.44;
-        p.push(`<rect class="n-gate" x="${cx-s/2}" y="${cy-s/2}" width="${s}" height="${s}" rx="2"/>`);
-      } else {
-        p.push(`<circle class="n-space" cx="${cx}" cy="${cy}" r="${CELL*0.16}"/>`);
-      }
-      if (edgeFrom === n.id) p.push(`<circle class="pick sel" cx="${cx}" cy="${cy}" r="${CELL*0.4}"/>`);
-      if (sel && sel.kind === "node" && sel.id === n.id) p.push(`<circle class="sel" cx="${cx}" cy="${cy}" r="${CELL*0.42}"/>`);
-    }
-    $("board-holder").innerHTML =
-      `<svg class="editor-board" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${p.join("")}</svg>`;
+    if (edgeFrom) { const n = node(edgeFrom); if (n) ov += `<circle class="gb-pick" cx="${n.x*CELL}" cy="${n.y*CELL}" r="${CELL*0.4}"/>`; }
+    $("board-holder").innerHTML = BOARD.renderBoardSVG(map, { overlays: ov });
   }
 
   const node = (id) => map.nodes.find((n) => n.id === id);
@@ -144,12 +116,17 @@
     if (tool === "facility") {
       const c = snapCell(px, py);
       const w = facSize[0], h = facSize[1];
-      map.facilities.push({ id: uid("f"), type: facType, label: "", x: clamp(c.x,0,map.grid.cols-w), y: clamp(c.y,0,map.grid.rows-h), w, h });
+      map.facilities.push({ id: uid("f"), x: clamp(c.x,0,map.grid.cols-w), y: clamp(c.y,0,map.grid.rows-h), w, h });
       render(); return;
     }
-    if (tool === "room" || tool === "space") {
+    if (tool === "room") {
       const s = snapPoint(px, py);
-      map.nodes.push({ id: uid("n"), kind: tool, x: s.x, y: s.y, label: "" });
+      map.nodes.push({ id: uid("n"), kind: "room", facType: roomType, x: s.x, y: s.y, label: "" });
+      render(); return;
+    }
+    if (tool === "space") {
+      const s = snapPoint(px, py);
+      map.nodes.push({ id: uid("n"), kind: "space", x: s.x, y: s.y, label: "" });
       render(); return;
     }
     if (tool === "gate") {
@@ -207,45 +184,51 @@
     if (sel.kind === "fac") {
       const f = map.facilities.find((x) => x.id === sel.id); if (!f) return;
       el.innerHTML = `
-        <label>種類 <select id="pp-type">${Object.entries(FAC_TYPES).map(([k,v]) => `<option value="${k}" ${k===f.type?"selected":""}>${v.label}</option>`).join("")}</select></label>
         <label>幅 <input id="pp-w" type="number" min="1" max="${map.grid.cols}" value="${f.w}"></label>
         <label>高 <input id="pp-h" type="number" min="1" max="${map.grid.rows}" value="${f.h}"></label>
-        <label>名称 <input id="pp-label" type="text" value="${f.label||""}" placeholder="${FAC_TYPES[f.type]?.label||""}"></label>
         <button id="pp-del" class="primary">この施設を削除</button>`;
-      $("pp-type").onchange = (e) => { f.type = e.target.value; render(); };
       $("pp-w").onchange = (e) => { f.w = clamp(+e.target.value||1,1,map.grid.cols-f.x); render(); };
       $("pp-h").onchange = (e) => { f.h = clamp(+e.target.value||1,1,map.grid.rows-f.y); render(); };
-      $("pp-label").oninput = (e) => { f.label = e.target.value; render(); };
       $("pp-del").onclick = () => { map.facilities = map.facilities.filter((x)=>x.id!==f.id); sel=null; renderProp(); render(); };
     } else {
       const n = node(sel.id); if (!n) return;
+      const typeRow = n.kind === "room" ? `
+        <label>種類 <select id="pp-ftype">${Object.entries(FAC_TYPES).map(([k,v]) => `<option value="${k}" ${k===n.facType?"selected":""}>${v.label}</option>`).join("")}</select></label>` : "";
       el.innerHTML = `
         <label>種別 <select id="pp-kind">
           <option value="room" ${n.kind==="room"?"selected":""}>◎ 施設マス</option>
           <option value="space" ${n.kind==="space"?"selected":""}>・ 中継マス</option>
           <option value="gate" ${n.kind==="gate"?"selected":""}>門</option>
         </select></label>
-        <label>名称 <input id="pp-label" type="text" value="${n.label||""}"></label>
+        ${typeRow}
+        <label>名称 <input id="pp-label" type="text" value="${n.label||""}" placeholder="${n.kind==="room" ? (FAC_TYPES[n.facType]?.label||"") : ""}"></label>
         <button id="pp-del" class="primary">このマスを削除</button>`;
-      $("pp-kind").onchange = (e) => { n.kind = e.target.value; if (n.kind==="gate") { const s=snapBorder(n.x*CELL,n.y*CELL); n.x=s.x; n.y=s.y; } render(); };
-      $("pp-label").oninput = (e) => { n.label = e.target.value; };
+      $("pp-kind").onchange = (e) => {
+        n.kind = e.target.value;
+        if (n.kind === "room" && !n.facType) n.facType = roomType;
+        if (n.kind === "gate") { const s=snapBorder(n.x*CELL,n.y*CELL); n.x=s.x; n.y=s.y; }
+        renderProp(); render();
+      };
+      if (n.kind === "room") $("pp-ftype").onchange = (e) => { n.facType = e.target.value; render(); };
+      $("pp-label").oninput = (e) => { n.label = e.target.value; render(); };
       $("pp-del").onclick = () => removeNode(n.id);
     }
   }
 
   // ---------- パレット/ツールUI ----------
   function buildPalette() {
-    $("fac-types").innerHTML = Object.entries(FAC_TYPES).map(([k,v]) =>
-      `<span class="chip fac-type ${k===facType?"active":""}" data-k="${k}" style="background:${k===facType?"":v.color}">${v.label}</span>`).join("");
+    $("room-types").innerHTML = Object.entries(FAC_TYPES).map(([k,v]) =>
+      `<span class="chip room-type ${k===roomType?"active":""}" data-k="${k}" style="background:${k===roomType?"":v.color}">${v.label}</span>`).join("");
     $("fac-sizes").innerHTML = SIZES.map((s) =>
       `<span class="chip sz ${s[0]===facSize[0]&&s[1]===facSize[1]?"active":""}" data-w="${s[0]}" data-h="${s[1]}">${s[0]}×${s[1]}</span>`).join("");
-    document.querySelectorAll(".fac-type").forEach((c) => c.onclick = () => { facType = c.dataset.k; buildPalette(); });
+    document.querySelectorAll(".room-type").forEach((c) => c.onclick = () => { roomType = c.dataset.k; buildPalette(); });
     document.querySelectorAll(".sz").forEach((c) => c.onclick = () => { facSize = [+c.dataset.w, +c.dataset.h]; buildPalette(); });
   }
   function setTool(t) {
     tool = t; edgeFrom = null;
     document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === t));
     $("facility-opts").style.display = (t === "facility") ? "" : "none";
+    $("room-opts").style.display = (t === "room") ? "" : "none";
     $("hint").textContent = HINTS[t] || "";
     render();
   }

@@ -1,0 +1,26 @@
+/* 共有の盤面スタイル：マップメーカーとゲームで同一。パレット変数は各ページのCSS(:root)を利用。 */
+.gb {
+  width: 100%; height: auto; display: block; max-width: 100%;
+  background: var(--paper2); border: 4px solid var(--ink); border-radius: 8px;
+  box-shadow: 3px 3px 0 var(--ink); touch-action: none;
+}
+.gb-grid { stroke: rgba(23,20,15,.16); stroke-width: .6; }
+.gb-field { fill: none; stroke: var(--ink); stroke-width: 3; }
+.gb-fac { fill: #ece0bf; stroke: var(--ink); stroke-width: 1.4; opacity: .96; }
+.gb-edge { stroke: var(--blue); stroke-width: 2.4; stroke-linecap: round; }
+.gb-edge.gb-hidden { stroke: var(--ink); stroke-dasharray: 5 4; }
+.gb-n { stroke: var(--ink); stroke-width: 2.2; }
+.gb-ring { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.gb-space { fill: #fff; }
+.gb-gate { fill: var(--green); }
+.gb-tunnel { fill: var(--yellow); stroke-dasharray: 2.5 2; }
+.gb-unknown { fill: var(--paper2); stroke-dasharray: 3 2.5; }
+.gb-lbl { fill: var(--ink); font-weight: 900; text-anchor: middle;
+  paint-order: stroke; stroke: var(--paper2); stroke-width: 2.4px; stroke-linejoin: round; }
+.gb-q { fill: var(--ink2); font-weight: 900; text-anchor: middle; }
+.gb-tok { stroke: var(--ink); stroke-width: 1.4; }
+.gb-tok.me { fill: var(--orange); }
+.gb-tok.me.guard { fill: var(--blue); }
+.gb-tok.foe { fill: #6b6152; }
+.gb-tlbl { fill: #fff; font-weight: 900; text-anchor: middle; -webkit-text-stroke: .3px var(--ink); }
+.gb-sel, .gb-pick { fill: none; stroke: var(--red); stroke-width: 3; }

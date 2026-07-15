@@ -1,7 +1,7 @@
 // 最小サービスワーカー：アプリシェルをキャッシュしてオフライン起動を可能にする。
 // （WebSocket通信はキャッシュ対象外。オンライン必須）
-const CACHE = "prison-break-v1";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "prison-break-v2";
+const SHELL = ["/", "/index.html", "/styles.css", "/board.css", "/board.js", "/app.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

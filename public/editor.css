@@ -61,11 +61,11 @@ button.primary { background: var(--red); color: #fff; }
 }
 .editor-board .grid { stroke: rgba(23,20,15,.16); stroke-width: .6; }
 .editor-board .field { fill: none; stroke: var(--ink); stroke-width: 3; }
-.editor-board .fac { stroke: var(--ink); stroke-width: 1.4; opacity: .96; }
-.editor-board .fac-label { fill: var(--ink); font-weight: 900; text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,.5); stroke-width: 2px; }
+.editor-board .fac { fill: #ece0bf; stroke: var(--ink); stroke-width: 1.4; opacity: .96; }
+.editor-board .n-label { fill: var(--ink); font-weight: 900; text-anchor: middle; paint-order: stroke; stroke: var(--paper2); stroke-width: 2.4px; stroke-linejoin: round; }
 .editor-board .edge { stroke: var(--blue); stroke-width: 2.4; stroke-linecap: round; }
 .editor-board .edge.hidden-edge { stroke: var(--ink); stroke-dasharray: 5 4; }
-.editor-board .n-room { fill: #fff; stroke: var(--ink); stroke-width: 2.2; }
+.editor-board .n-room { stroke: var(--ink); stroke-width: 2.2; }
 .editor-board .n-room-ring { fill: none; stroke: var(--ink); stroke-width: 1.4; }
 .editor-board .n-space { fill: #fff; stroke: var(--ink); stroke-width: 2; }
 .editor-board .n-gate { fill: var(--green); stroke: var(--ink); stroke-width: 2.2; }
