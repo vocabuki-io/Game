@@ -10,22 +10,24 @@
 import { MAP, TUNNEL_EXIT, TUNNEL_EXIT_POS } from "./map.js";
 
 // ---- 標準マップ（現行 map.js と同一挙動を再現） ----
+const B = 0.12; // 標準マップは 0..100 座標を 12x12 グリッドへ
 function buildBuiltin() {
   const nodes = {};
   for (const id of Object.keys(MAP.nodes)) {
     const n = MAP.nodes[id];
-    nodes[id] = { id, label: n.label, kind: n.kind, x: n.x, y: n.y,
+    nodes[id] = { id, label: n.label, kind: n.kind, x: n.x * B, y: n.y * B,
       restricted: !!n.restricted, exit: !!n.exit, muster: !!n.muster, secret: false,
       work: id === "workshop" };
   }
   nodes[TUNNEL_EXIT] = { id: TUNNEL_EXIT, label: "トンネル出口", kind: "tunnel",
-    x: TUNNEL_EXIT_POS.x, y: TUNNEL_EXIT_POS.y, restricted: false, exit: true, muster: false, secret: true };
+    x: TUNNEL_EXIT_POS.x * B, y: TUNNEL_EXIT_POS.y * B, restricted: false, exit: true, muster: false, secret: true };
 
   const adj = {};
   for (const id of Object.keys(MAP.edges)) adj[id] = MAP.edges[id].map((to) => ({ to, hidden: false }));
   adj[TUNNEL_EXIT] = adj[TUNNEL_EXIT] || [];
 
   return {
+    grid: { cols: 12, rows: 12 },
     nodes, adj,
     roles: {
       prisonerStart: "cell", prisonerDiscovered: ["cell", "corridor"], guardStart: "yard",
@@ -63,15 +65,13 @@ const FAC_LABEL = {
 export function fromEditor(json) {
   if (!json || !json.grid || !Array.isArray(json.nodes)) throw new Error("マップ形式が不正");
   const cols = json.grid.cols, rows = json.grid.rows;
-  const sx = (gx) => Math.round((gx / cols) * 1000) / 10;
-  const sy = (gy) => Math.round((gy / rows) * 1000) / 10;
 
   const nodes = {};
   for (const n of json.nodes) {
     const isGate = n.kind === "gate";
     const label = n.label || (n.kind === "room" ? (FAC_LABEL[n.facType] || "部屋") : isGate ? "門" : "");
     nodes[n.id] = {
-      id: n.id, label, kind: isGate ? "gate" : n.kind, x: sx(n.x), y: sy(n.y),
+      id: n.id, label, kind: isGate ? "gate" : n.kind, x: n.x, y: n.y,
       restricted: isGate, exit: isGate, muster: n.kind === "room" && (n.facType === "yard" || n.facType === "plaza"),
       secret: false, work: n.kind === "room" && n.facType === "factory", facType: n.facType || null,
     };
@@ -102,13 +102,14 @@ export function fromEditor(json) {
   const discovered = [prisonerStart, ...neighborIds(adj, prisonerStart)];
 
   return {
+    grid: { cols, rows },
     nodes, adj,
     roles: {
       prisonerStart, prisonerDiscovered: [...new Set(discovered)], guardStart,
       musterNode: musterRoom ? musterRoom.id : null,
       digSpot: null, tunnelExit: null, tunnelGoal: 0,
     },
-    facilities: (json.facilities || []).map((f) => ({ x: sx(f.x), y: sy(f.y), w: sx(f.w), h: sy(f.h) })),
+    facilities: (json.facilities || []).map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h })),
   };
 }
 

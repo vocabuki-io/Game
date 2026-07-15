@@ -123,9 +123,10 @@ test("fromEditor: 変換とロール推定", () => {
   assert.equal(md.roles.guardStart, "t", "監視塔が看守スタート");
   assert.equal(md.nodes.g.exit, true);
   assert.equal(md.nodes.g.restricted, true);
-  assert.equal(md.nodes.s.x, 20); // 2/10*100
+  assert.equal(md.grid.cols, 10);
+  assert.equal(md.nodes.s.x, 2); // グリッド単位のまま
   assert.ok(md.adj.s.some((e) => e.to === "g" && e.hidden), "隠し通路が hidden で入る");
-  assert.equal(md.facilities[0].w, 20);
+  assert.equal(md.facilities[0].w, 2);
 });
 
 test("カスタムマップで門から脱獄→囚人勝ち", () => {

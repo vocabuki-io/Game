@@ -44,47 +44,18 @@
     return { name: "新規マップ", grid: { cols, rows }, facilities: [], nodes: [], edges: [] };
   }
 
-  // ---------- 描画 ----------
+  // ---------- 描画（共有レンダラ BOARD を使用＝ゲームと同一の見た目） ----------
   function render() {
-    const W = map.grid.cols * CELL, H = map.grid.rows * CELL;
-    const p = [];
-    for (let x = 0; x <= map.grid.cols; x++) p.push(`<line class="grid" x1="${x*CELL}" y1="0" x2="${x*CELL}" y2="${H}"/>`);
-    for (let y = 0; y <= map.grid.rows; y++) p.push(`<line class="grid" x1="0" y1="${y*CELL}" x2="${W}" y2="${y*CELL}"/>`);
-    // 施設（サイズだけの箱）
-    for (const f of map.facilities) {
-      p.push(`<rect class="fac" x="${f.x*CELL}" y="${f.y*CELL}" width="${f.w*CELL}" height="${f.h*CELL}" rx="3"/>`);
-      if (sel && sel.kind === "fac" && sel.id === f.id)
-        p.push(`<rect class="sel" x="${f.x*CELL-2}" y="${f.y*CELL-2}" width="${f.w*CELL+4}" height="${f.h*CELL+4}" rx="3"/>`);
+    let ov = "";
+    if (sel && sel.kind === "fac") {
+      const f = map.facilities.find((x) => x.id === sel.id);
+      if (f) ov += `<rect class="gb-sel" x="${f.x*CELL-2}" y="${f.y*CELL-2}" width="${f.w*CELL+4}" height="${f.h*CELL+4}" rx="3"/>`;
+    } else if (sel && sel.kind === "node") {
+      const n = node(sel.id);
+      if (n) ov += `<circle class="gb-sel" cx="${n.x*CELL}" cy="${n.y*CELL}" r="${CELL*0.42}"/>`;
     }
-    // 外周
-    p.push(`<rect class="field" x="1.5" y="1.5" width="${W-3}" height="${H-3}"/>`);
-    // 道
-    for (const e of map.edges) {
-      const a = node(e.a), b = node(e.b);
-      if (!a || !b) continue;
-      p.push(`<line class="edge ${e.hidden ? "hidden-edge" : ""}" x1="${a.x*CELL}" y1="${a.y*CELL}" x2="${b.x*CELL}" y2="${b.y*CELL}"/>`);
-    }
-    // マス
-    for (const n of map.nodes) {
-      const cx = n.x*CELL, cy = n.y*CELL;
-      if (n.kind === "room") {
-        const t = FAC_TYPES[n.facType] || { label: "", color: "#fff" };
-        p.push(`<circle class="n-room" cx="${cx}" cy="${cy}" r="${CELL*0.34}" fill="${t.color}"/>`);
-        p.push(`<circle class="n-room-ring" cx="${cx}" cy="${cy}" r="${CELL*0.21}"/>`);
-        const name = n.label || t.label;
-        if (name) p.push(`<text class="n-label" x="${cx}" y="${cy + CELL*0.5}" font-size="11">${name}</text>`);
-      } else if (n.kind === "gate") {
-        const s = CELL*0.44;
-        p.push(`<rect class="n-gate" x="${cx-s/2}" y="${cy-s/2}" width="${s}" height="${s}" rx="2"/>`);
-      } else {
-        p.push(`<circle class="n-space" cx="${cx}" cy="${cy}" r="${CELL*0.16}"/>`);
-        if (n.label) p.push(`<text class="n-label" x="${cx}" y="${cy + CELL*0.4}" font-size="10">${n.label}</text>`);
-      }
-      if (edgeFrom === n.id) p.push(`<circle class="pick sel" cx="${cx}" cy="${cy}" r="${CELL*0.4}"/>`);
-      if (sel && sel.kind === "node" && sel.id === n.id) p.push(`<circle class="sel" cx="${cx}" cy="${cy}" r="${CELL*0.42}"/>`);
-    }
-    $("board-holder").innerHTML =
-      `<svg class="editor-board" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${p.join("")}</svg>`;
+    if (edgeFrom) { const n = node(edgeFrom); if (n) ov += `<circle class="gb-pick" cx="${n.x*CELL}" cy="${n.y*CELL}" r="${CELL*0.4}"/>`; }
+    $("board-holder").innerHTML = BOARD.renderBoardSVG(map, { overlays: ov });
   }
 
   const node = (id) => map.nodes.find((n) => n.id === id);

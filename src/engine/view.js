@@ -10,7 +10,8 @@ function cardView(id) {
 }
 
 function meta(n, extra) {
-  return { id: n.id, x: n.x, y: n.y, kind: n.kind, restricted: !!n.restricted, exit: !!n.exit, muster: !!n.muster, ...extra };
+  return { id: n.id, x: n.x, y: n.y, kind: n.kind, facType: n.facType || null,
+    restricted: !!n.restricted, exit: !!n.exit, muster: !!n.muster, ...extra };
 }
 
 export function buildView(state, role) {
@@ -56,7 +57,7 @@ function prisonerView(state, base) {
 
   return {
     ...base,
-    map: { nodes, edges },
+    map: { nodes, edges, grid: M.grid },
     self: {
       pos: P.pos, resources: P.resources, contraband: [...P.contraband],
       concealed: P.concealed, tunnelProgress: P.tunnelProgress,
@@ -94,7 +95,7 @@ function guardView(state, base) {
 
   return {
     ...base,
-    map: { nodes, edges },
+    map: { nodes, edges, grid: M.grid },
     self: { pos: G.pos },
     hand: G.hand.map(cardView),
     prisonerPos: prisonerVisible ? P.pos : null,

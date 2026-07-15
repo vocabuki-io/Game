@@ -92,71 +92,21 @@ function renderStatus() {
   }
 }
 
-// ---- SVGすごろく盤面 ----
+// ---- 盤面（マップメーカーと同一の共有レンダラ BOARD を使用） ----
 function renderMap() {
   const nodes = view.map.nodes;
   const pos = {}; nodes.forEach((n) => (pos[n.id] = n));
-  const me = view.self.pos;
-  const foe = myRole === "prisoner" ? view.guardPos : view.prisonerPos;
+  const meId = view.self.pos;
+  const foeId = myRole === "prisoner" ? view.guardPos : view.prisonerPos;
 
-  const parts = [];
-  // 外壁
-  parts.push(`<rect class="wall" x="0" y="0" width="100" height="100" rx="3"/>`);
+  const tokens = [];
+  const meNode = pos[meId];
+  if (meNode) tokens.push({ x: meNode.x - 0.12, y: meNode.y - 0.12, cls: "me" + (myRole === "guard" ? " guard" : ""), ch: ROLE_CH[myRole] });
+  const foeNode = foeId ? pos[foeId] : null;
+  if (foeNode) tokens.push({ x: foeNode.x + 0.12, y: foeNode.y + 0.12, cls: "foe", ch: ROLE_CH[myRole === "prisoner" ? "guard" : "prisoner"] });
 
-  // 施設ボックス（マップメーカー由来。あれば描画）
-  for (const f of (view.facilities || [])) {
-    parts.push(`<rect class="fac-box" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="1.5"/>`);
-  }
-
-  // 道（edges）。hidden=囚人の隠し通路は破線
-  for (const e of view.map.edges) {
-    const pa = pos[e.a], pb = pos[e.b];
-    if (!pa || !pb) continue;
-    parts.push(`<line class="edge ${e.hidden ? "hidden-edge" : ""}" x1="${pa.x}" y1="${pa.y}" x2="${pb.x}" y2="${pb.y}"/>`);
-  }
-
-  // 部屋の囲み（施設ボックスが無い場合のみ＝標準マップ向け）
-  if (!(view.facilities || []).length) {
-    for (const n of nodes) {
-      if (n.kind === "room" || n.kind === "gate") {
-        parts.push(`<rect class="room-box" x="${n.x - 10}" y="${n.y - 8}" width="20" height="17" rx="1.5"/>`);
-      }
-    }
-  }
-
-  // マス（ノード）
-  for (const n of nodes) {
-    const isRoomy = n.kind === "room" || n.kind === "gate";
-    const r = n.kind === "tunnel" ? 5 : isRoomy ? 5.4 : 3.8;
-    let cls = "n";
-    if (n.kind === "space") cls += " n-space";
-    if (!n.known) cls += " n-unknown";
-    else if (n.kind === "tunnel") cls += " n-tunnel";
-    else if (n.exit) cls += " n-exit";
-    else if (n.restricted) cls += " n-restricted";
-    parts.push(`<circle class="${cls}" cx="${n.x}" cy="${n.y}" r="${r}"/>`);
-    if (isRoomy && n.known) parts.push(`<circle class="n-ring" cx="${n.x}" cy="${n.y}" r="${r - 1.7}"/>`);
-    if (n.known) {
-      // 壁際（下寄り）のゲートはラベルを上に出して壁との被りを避ける
-      const ly = n.y >= 80 ? n.y - 8 : n.y + (isRoomy ? 11 : 8);
-      parts.push(`<text class="lbl" x="${n.x}" y="${ly}" font-size="3.6">${n.label}${n.muster ? " ⚑" : ""}</text>`);
-    } else {
-      parts.push(`<text class="q" x="${n.x}" y="${n.y + 1.6}" font-size="5.5">？</text>`);
-    }
-  }
-
-  // コマ（トークン）
-  if (pos[me]) parts.push(token(pos[me], -2.4, -2.6, `tok-me${myRole === "guard" ? " guard" : ""}`, ROLE_CH[myRole]));
-  if (foe && pos[foe]) parts.push(token(pos[foe], 2.4, 2.8, "tok-foe", ROLE_CH[myRole === "prisoner" ? "guard" : "prisoner"]));
-
-  $("map").innerHTML =
-    `<svg class="board" viewBox="-9 -9 118 122" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`;
-}
-
-function token(n, dx, dy, cls, ch) {
-  const x = n.x + dx, y = n.y + dy;
-  return `<circle class="tok ${cls}" cx="${x}" cy="${y}" r="3.2"/>` +
-         `<text class="tok-lbl" x="${x}" y="${y + 1.1}" font-size="3">${ch}</text>`;
+  const map = { grid: view.map.grid, nodes: view.map.nodes, edges: view.map.edges, facilities: view.facilities || [] };
+  $("map").innerHTML = BOARD.renderBoardSVG(map, { tokens });
 }
 
 function renderLog() {
