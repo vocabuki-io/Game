@@ -1,45 +1,25 @@
-// クライアント：WebSocketで権威サーバ(DO)に繋ぎ、役割別ビューをSVGすごろく盤面で描画・操作する。
+// クライアント：WebSocketで権威サーバ(DO)に繋ぎ、役割別UIで「3つの鍵」を操作する。
 const $ = (id) => document.getElementById(id);
-let ws = null, myRole = null, view = null, prevView = null, pendingCard = null;
+let ws = null, myRole = null, view = null, prevView = null;
 
 const ROLE_JP = { prisoner: "囚人", guard: "看守" };
-const ROLE_CH = { prisoner: "囚", guard: "看" };
-const EVENT_JP = { none: "特になし", labor: "刑務作業", inspection: "手荷物検査", construction: "工事", visit: "面会" };
 
 // ---- ロビー ----
-function loadSavedMaps() {
-  try { return JSON.parse(localStorage.getItem("mapmaker.v1")) || {}; } catch { return {}; }
-}
-function populateMaps() {
-  const maps = loadSavedMaps();
-  const sel = $("map-select");
-  if (!sel) return;
-  sel.innerHTML = `<option value="">標準マップ</option>` +
-    Object.keys(maps).map((k) => `<option value="${k}">🗺️ ${k}</option>`).join("");
-}
-function selectedMap() {
-  const sel = $("map-select");
-  const name = sel ? sel.value : "";
-  if (!name) return null;
-  return loadSavedMaps()[name] || null;
-}
-
 function initLobby() {
   const saved = location.hash.slice(1);
   if (saved) $("room-input").value = decodeURIComponent(saved);
-  populateMaps();
   $("join-btn").addEventListener("click", () => {
     const room = $("room-input").value.trim();
     if (!room) return toast("あいことばを入れてください");
     location.hash = encodeURIComponent(room);
-    connect(room, selectedMap());
+    connect(room);
   });
 }
 
-function connect(room, map) {
+function connect(room) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/api/room/${encodeURIComponent(room)}`);
-  ws.addEventListener("open", () => ws.send(JSON.stringify({ t: "join", map })));
+  ws.addEventListener("open", () => ws.send(JSON.stringify({ t: "join" })));
   ws.addEventListener("message", onMessage);
   ws.addEventListener("close", () => toast("接続が切れました"));
   ws.addEventListener("error", () => toast("接続エラー"));
@@ -48,6 +28,7 @@ function connect(room, map) {
 function onMessage(ev) {
   const msg = JSON.parse(ev.data);
   if (msg.t === "full") { toast("この部屋は満員です"); return; }
+  if (msg.t === "error") { toast(msg.msg || "エラー"); return; }
   if (msg.t === "joined") {
     myRole = msg.role;
     $("lobby").classList.add("hidden");
@@ -57,153 +38,128 @@ function onMessage(ev) {
     rb.className = "badge " + myRole;
     return;
   }
-  if (msg.t === "error") { toast(msg.msg); return; }
-  if (msg.t === "state") { view = msg.view; render(); prevView = view; }
+  if (msg.t === "state") {
+    prevView = view;
+    view = msg.view;
+    maybeBurst();
+    render();
+  }
 }
 
 // ---- 描画 ----
 function render() {
-  detectBursts();
-  $("day-badge").textContent = `Day ${view.day}/${view.maxDay}`;
-  $("event-badge").textContent = "📅 " + (EVENT_JP[view.event] || view.event);
-  renderStatus();
-  renderMap();
-  renderLog();
+  $("turn-badge").textContent = `T ${Math.min(view.turn, view.maxTurn)}/${view.maxTurn}`;
+  renderLocks();
   renderControls();
+  renderLog();
 }
 
-function nodeById(id) { return view.map.nodes.find((n) => n.id === id); }
-function nodeLabel(id) { const n = nodeById(id); return n ? (n.label || "？マス") : id; }
-
-function renderStatus() {
-  const el = $("status");
-  if (myRole === "prisoner") {
-    const s = view.self;
-    const pct = Math.round((s.tunnelProgress / s.tunnelGoal) * 100);
-    const tunnel = s.canDig ? `
-      <div class="row"><span class="k">トンネル</span><span>${s.tunnelProgress}/${s.tunnelGoal}${s.tunnelOpen ? " ✅開通" : ""}</span></div>
-      <div class="bar"><i style="width:${pct}%"></i></div>` : "";
-    el.innerHTML = `${tunnel}
-      <div class="row"><span class="k">リソース</span><span>${s.resources}</span></div>
-      <div class="row"><span class="k">禁制品</span><span>${s.contraband.length ? s.contraband.join(", ") + (s.concealed ? "（隠蔽中）" : "（無防備！）") : "なし"}</span></div>`;
-  } else {
-    el.innerHTML = `<div class="row"><span class="k">任務</span><span>${view.maxDay}日目まで監督し現行犯を押さえろ</span></div>
-      <div class="row"><span class="k">囚人の位置</span><span>${view.prisonerPos ? nodeLabel(view.prisonerPos) : "見失っている…"}</span></div>`;
-  }
-}
-
-// ---- 盤面（マップメーカーと同一の共有レンダラ BOARD を使用） ----
-function renderMap() {
-  const nodes = view.map.nodes;
-  const pos = {}; nodes.forEach((n) => (pos[n.id] = n));
-  const meId = view.self.pos;
-  const foeId = myRole === "prisoner" ? view.guardPos : view.prisonerPos;
-
-  const tokens = [];
-  const meNode = pos[meId];
-  if (meNode) tokens.push({ x: meNode.x - 0.12, y: meNode.y - 0.12, cls: "me" + (myRole === "guard" ? " guard" : ""), ch: ROLE_CH[myRole] });
-  const foeNode = foeId ? pos[foeId] : null;
-  if (foeNode) tokens.push({ x: foeNode.x + 0.12, y: foeNode.y + 0.12, cls: "foe", ch: ROLE_CH[myRole === "prisoner" ? "guard" : "prisoner"] });
-
-  const map = { grid: view.map.grid, nodes: view.map.nodes, edges: view.map.edges, facilities: view.facilities || [] };
-  $("map").innerHTML = BOARD.renderBoardSVG(map, { tokens });
-}
-
-function renderLog() {
-  $("log").innerHTML = (view.log || []).map((l) => `<div class="l">D${l.day}: ${l.text}</div>`).join("");
+function renderLocks() {
+  const g = view.goal;
+  $("locks").innerHTML = view.locks.map((v, i) => {
+    const pips = Array.from({ length: g }, (_, k) => `<span class="pip ${k < v ? "on" : ""}"></span>`).join("");
+    const open = v >= g;
+    return `<div class="lock ${open ? "open" : ""}">
+      <span class="ico">${open ? "🔓" : "🔒"}</span>
+      <div class="body"><div class="name">扉 ${i + 1}</div><div class="pips">${pips}</div></div>
+      <span class="num">${v}/${g}</span>
+    </div>`;
+  }).join("");
 }
 
 function renderControls() {
   const el = $("controls");
-  pendingCard = null;
+  const hint = $("hint-line");
 
   if (view.winner) {
     const win = view.winner === myRole;
+    hint.textContent = "";
     el.innerHTML = `<div class="result">
       <h2 class="win-${view.winner}">${win ? "🎉 勝利！" : "敗北…"}</h2>
       <p>${view.winReason}</p>
-      <button class="primary" onclick="reset()">もう一度</button>
+      <button class="primary" id="reset-btn">もう一度</button>
     </div>`;
+    $("reset-btn").addEventListener("click", () => ws.send(JSON.stringify({ t: "reset" })));
     return;
   }
 
-  if (view.phase === "pursuit") return renderPursuit(el);
-
-  if (view.waiting[myRole]) {
-    el.innerHTML = `<div class="waiting">提出済み！ 相手の行動を待っています…</div>`;
+  if (view.submitted) {
+    hint.textContent = "";
+    el.innerHTML = `<div class="waiting">提出ずみ。相手を待っています…</div>`;
     return;
   }
-  el.innerHTML = `<div class="title">手札から1つ選ぶ</div>
-    <div class="cards">${view.hand.map((c, i) =>
-      `<button class="card" onclick="chooseCard(${i})"><div class="cl">${c.label}</div><div class="cd">${c.desc}</div></button>`
-    ).join("")}</div>
-    <div id="target-area"></div>`;
+
+  if (myRole === "prisoner") {
+    hint.textContent = "どの扉をピッキングする？（鍵+1 / 看守に見張られると0）";
+    el.innerHTML = `<div class="ctrl-group">
+      <div class="btn-row">${btns("pick", "鍵", (i) => ({ t: "act", door: i }))}</div>
+    </div>`;
+  } else {
+    hint.textContent = "監視（当てれば現行犯＝0に）か、修理（鍵-1）か。どこを狙う？";
+    el.innerHTML = `<div class="ctrl-group">
+      <div class="glabel">👁 監視する扉</div>
+      <div class="btn-row">${btns("watch", "扉", (i) => ({ t: "act", type: "watch", target: i }))}</div>
+      <div class="glabel">🔧 修理する扉</div>
+      <div class="btn-row">${btns("repair", "扉", (i) => ({ t: "act", type: "repair", target: i }))}</div>
+    </div>`;
+  }
+  bindActs();
 }
 
-function renderPursuit(el) {
-  if (view.waiting[myRole]) { el.innerHTML = `<div class="waiting">追跡中… 相手を待っています</div>`; return; }
-  const turns = view.pursuit ? view.pursuit.turnsLeft : 0;
-  if (myRole === "prisoner") {
-    el.innerHTML = `<div class="title">🏃 追跡フェーズ（残り${turns}手）— 逃げるか刃向かうか</div>
-      <div class="targets">
-        ${view.legalMoves.map((m) => `<button onclick="pursuit('flee','${m}')">逃走→${nodeLabel(m)}</button>`).join("")}
-        <button class="primary" onclick="pursuit('fight')">刃向かう（反撃）</button>
-      </div>`;
-  } else {
-    el.innerHTML = `<div class="title">🚨 追跡フェーズ（残り${turns}手）— マスを被せて捕縛せよ</div>
-      <div class="targets">
-        ${view.legalMoves.map((m) => `<button onclick="pursuit('chase','${m}')">被せる→${nodeLabel(m)}</button>`).join("")}
-      </div>`;
-  }
+function btns(cls, label, payloadFor) {
+  return view.locks.map((_, i) =>
+    `<button class="act ${cls}" data-payload='${JSON.stringify(payloadFor(i))}'>${label} ${i + 1}</button>`
+  ).join("");
+}
+
+function bindActs() {
+  document.querySelectorAll("#controls .act").forEach((b) => {
+    b.addEventListener("click", () => {
+      ws.send(b.dataset.payload);
+      document.querySelectorAll("#controls .act").forEach((x) => (x.disabled = true));
+    });
+  });
+}
+
+function renderLog() {
+  $("log").innerHTML = (view.log || []).map((l) => `<div class="l">T${l.turn}: ${l.text}</div>`).join("");
 }
 
 // ---- バースト演出 ----
-function detectBursts() {
+function maybeBurst() {
   if (!prevView) return;
-  if (prevView.phase !== "pursuit" && view.phase === "pursuit") showBurst("アウト！", "red");
-  if (!prevView.winner && view.winner) {
-    const r = view.winReason || "";
-    if (/脱獄|逃げ切|脱出/.test(r)) showBurst("脱獄！", "orange");
-    else if (/撃破/.test(r)) showBurst("撃破！", "red");
-    else if (/捕縛|確保|制圧|逃げ道/.test(r)) showBurst("確保！", "blue");
-    else if (/期日/.test(r)) showBurst("タイムアップ", "blue");
-    else showBurst("決着！", "");
+  if (view.winner && !prevView.winner) {
+    showBurst(view.winner === myRole ? "勝利！" : "敗北…");
+    return;
+  }
+  const last = view.log[view.log.length - 1];
+  if (last && /現行犯/.test(last.text) && (!prevView.log.length || prevView.log[prevView.log.length - 1].text !== last.text)) {
+    showBurst("確保！");
   }
 }
-let burstTimer = null;
-function showBurst(text, color) {
-  const b = $("burst"), star = b.querySelector(".burst-star");
-  star.textContent = text;
-  star.className = "burst-star" + (color ? " " + color : "");
+
+function showBurst(text) {
+  $("burst-text").textContent = text;
+  const b = $("burst");
   b.classList.remove("hidden");
-  clearTimeout(burstTimer);
-  burstTimer = setTimeout(() => b.classList.add("hidden"), 1500);
+  b.querySelector(".burst-star").style.animation = "none";
+  void b.offsetWidth;
+  b.querySelector(".burst-star").style.animation = "";
+  clearTimeout(showBurst._t);
+  showBurst._t = setTimeout(() => b.classList.add("hidden"), 900);
 }
-window.showBurst = showBurst;
 
-// ---- 操作 ----
-window.chooseCard = (i) => {
-  const c = view.hand[i];
-  if (!c.needsTarget) return send({ t: "action", card: c.id, target: null });
-  pendingCard = c;
-  $("target-area").innerHTML = `<div class="title">${c.label}：移動先を選ぶ</div>
-    <div class="targets">${view.legalMoves.length
-      ? view.legalMoves.map((m) => `<button onclick="chooseTarget('${m}')">${nodeLabel(m)}</button>`).join("")
-      : "<span class='waiting'>動けるマスがない</span>"}</div>`;
-};
-window.chooseTarget = (to) => { if (pendingCard) send({ t: "action", card: pendingCard.id, target: to }); };
-window.pursuit = (type, to) => send({ t: "pursuit", type, to: to || null });
-window.reset = () => send({ t: "reset" });
-
-function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
-
-// ---- toast ----
-let toastTimer = null;
+// ---- ユーティリティ ----
 function toast(text) {
-  const t = $("toast"); t.textContent = text; t.classList.remove("hidden");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add("hidden"), 2600);
+  const el = $("toast");
+  el.textContent = text;
+  el.classList.remove("hidden");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.add("hidden"), 2600);
 }
 
-// PWA
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+
 initLobby();

@@ -1,8 +1,6 @@
-// Durable Object：1部屋=1インスタンス。囚人1・看守1のWebSocket接続を保持し、
-// 権威stateを更新して役割別ビューをbroadcastする。マップは最初の参加者の選択を採用。
-import { newGame, submitAction, submitPursuit } from "./engine/engine.js";
+// Durable Object：1部屋=1インスタンス。囚人1・看守1のWebSocketを保持し、権威stateを更新して配信。
+import { newGame, submitAction } from "./engine/engine.js";
 import { buildView } from "./engine/view.js";
-import { fromEditor, BUILTIN } from "./engine/mapdef.js";
 
 const ROLES = ["prisoner", "guard"];
 
@@ -12,7 +10,6 @@ export class GameRoom {
     this.env = env;
     this.sessions = new Map(); // ws -> role
     this.game = null;
-    this.mapDef = BUILTIN;
   }
 
   async fetch(request) {
@@ -40,14 +37,7 @@ export class GameRoom {
     ws.addEventListener("message", (ev) => this.onMessage(ws, role, ev));
     ws.addEventListener("close", () => { this.sessions.delete(ws); });
     ws.addEventListener("error", () => { this.sessions.delete(ws); });
-    // 既にゲームがあれば現在状態を渡す（後から入った看守など）
     if (this.game) this.sendState(ws, role);
-  }
-
-  buildMap(mapJson) {
-    if (!mapJson) return BUILTIN;
-    try { return fromEditor(mapJson); }
-    catch { return BUILTIN; } // 不正なマップは標準にフォールバック
   }
 
   onMessage(ws, role, ev) {
@@ -56,16 +46,13 @@ export class GameRoom {
     let res = { ok: true };
     switch (msg.t) {
       case "join":
-        if (!this.game) { this.mapDef = this.buildMap(msg.map); this.game = newGame(undefined, this.mapDef); }
+        if (!this.game) this.game = newGame();
         break;
-      case "action":
-        if (this.game) res = submitAction(this.game, role, { card: msg.card, target: msg.target });
-        break;
-      case "pursuit":
-        if (this.game) res = submitPursuit(this.game, role, { type: msg.type, to: msg.to });
+      case "act":
+        if (this.game) res = submitAction(this.game, role, msg);
         break;
       case "reset":
-        this.game = newGame(undefined, this.mapDef);
+        this.game = newGame();
         break;
       default:
         return;
